@@ -1,0 +1,6 @@
+Metadata-Version: 2.2
+Name: storseismic
+Version: 0.1
+Requires-Dist: torch>=2.5.0
+Requires-Dist: numpy>=1.19.0
+Dynamic: requires-dist

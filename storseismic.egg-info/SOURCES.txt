@@ -1,0 +1,7 @@
+README.md
+setup.py
+storseismic.egg-info/PKG-INFO
+storseismic.egg-info/SOURCES.txt
+storseismic.egg-info/dependency_links.txt
+storseismic.egg-info/requires.txt
+storseismic.egg-info/top_level.txt

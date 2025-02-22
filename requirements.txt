@@ -1,0 +1,25 @@
+# Core dependencies
+torch>=2.5.0  # Using newer version for better compatibility
+torchvision>=0.16.0
+numpy>=1.19.0
+pandas>=1.2.0
+matplotlib>=3.3.0
+
+# Data handling
+#snist @ git+https://github.com/LukasMosser/SNIST.git  # For SNIST dataset
+snist @ git+https://github.com/LukasMosser/SNIST.git
+
+# Optimization
+radam @ git+https://github.com/LiyuanLucasLiu/RAdam
+
+# Visualization and notebooks
+jupyter>=1.0.0
+ipywidgets>=7.0.0
+ipykernel>=5.3.0
+ipython>=7.0.0
+
+# Project specific
+transformers>=4.5.0  # For transformer architecture
+
+# Local package
+pip install -e .  # Install local storseismic package in editable mode
