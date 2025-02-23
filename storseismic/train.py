@@ -36,7 +36,7 @@ def run_pretraining(
     avg_valid_loss = []
     time_per_epoch = []
     if patience is not None:
-        checkpoint = os.path.join(tmp_dir, str(os.getpid())+"checkpoint.pt")
+        checkpoint = os.path.join(tmp_dir, str(os.getpid()) + "checkpoint.pt")
         early_stopping = EarlyStopping(patience=patience, verbose=True, path=checkpoint)
 
     best_val_loss = float('inf')
@@ -47,11 +47,16 @@ def run_pretraining(
 
         for batch in tqdm(train_dataloader, total=len(train_dataloader)):
             optim.zero_grad()
-            inputs_embeds = batch['inputs_embeds'].to(device)
+
+            # Get data and move to device.
+            # NOTE: The original expected shape was [B, 271, 20] with tokens along dim 2.
+            # However, the input data is now stored with tokens in the second dimension, i.e.
+            # the shape is [B, 20, 271]. Thus, no transposition is required.
+            inputs_embeds = batch['inputs_embeds'].to(device)  # expected shape: [B, 20, 271]
             labels = batch['labels'].to(device)
             mask_label = batch['mask_label'].to(device)
 
-            # Use the projection layer
+            # Directly project the one-hot encoded input (last dim of size 271) to 256 dimensions.
             inputs_256 = projection(inputs_embeds.float())
 
             outputs = model(inputs_embeds=inputs_256)
@@ -67,23 +72,18 @@ def run_pretraining(
         losses_valid = 0
         with torch.no_grad():
             for i, batch in enumerate(loop_valid):
-                # pull all tensor batches required for training
-
-                inputs_embeds = batch['inputs_embeds'].to(device)
+                # Get validation data.
+                inputs_embeds = batch['inputs_embeds'].to(device)  # expected shape: [B, 20, 271]
                 mask_label = batch['mask_label'].to(device)
                 labels = batch['labels'].to(device)
 
-                # process
-
-                # "projection" must be in scope; for example, pass it as an argument
+                # No transposition is needed as tokens are already in the second dimension.
                 inputs_256 = projection(inputs_embeds.float())
 
                 outputs = model(inputs_embeds=inputs_256)
-
                 select_matrix = mask_label.clone()
 
                 loss = loss_fn(outputs.logits * select_matrix, labels.float() * select_matrix)
-
                 losses_valid += loss.item()
 
                 loop_valid.set_description(f'Validation {epoch}')
@@ -98,8 +98,8 @@ def run_pretraining(
         
         if plot:
             ax.cla()
-            ax.plot(np.arange(1, epoch+2), avg_train_loss,'b', label='Training Loss')
-            ax.plot(np.arange(1, epoch+2), avg_valid_loss, 'orange', label='Validation Loss')
+            ax.plot(np.arange(1, epoch + 2), avg_train_loss, 'b', label='Training Loss')
+            ax.plot(np.arange(1, epoch + 2), avg_valid_loss, 'orange', label='Validation Loss')
             ax.legend()
             ax.set_title("Loss Curve")
             ax.set_xlabel("Epoch")
@@ -108,7 +108,6 @@ def run_pretraining(
 
         if patience is not None:
             early_stopping(avg_valid_loss[-1], model)
-
             if early_stopping.early_stop:
                 print("Early stopping")
                 break
@@ -223,7 +222,7 @@ def run_velpred(
     plot=False, 
     f=None, 
     ax=None,
-    projection=None
+    projection=None  # Expecting inputs to be of shape [B, token_length, one_hot_dim] e.g., [B, 20, 271]
 ):
     total_time = time.time()
     avg_train_loss = []
@@ -241,34 +240,15 @@ def run_velpred(
         for i, batch in enumerate(loop_train):
             optim.zero_grad()
 
-            inputs_embeds = batch['inputs_embeds'].to(device)
-            labels = batch['labels'].to(device)
-            
-            # Debug prints
-            print(f"\nInput shapes before processing:")
-            print(f"inputs_embeds shape: {inputs_embeds.shape}")
-            print(f"labels shape: {labels.shape}")
-            
-            # Select the first position from labels (or you could use mean across positions)
-            labels = labels[:, 0, :]  # Now shape will be [16, 271]
-            print(f"labels shape after selecting first position: {labels.shape}")
-            
+            inputs_embeds = batch['inputs_embeds'].to(device)  # expected shape: [B, token_length, one_hot_dim]
+            labels = batch['labels'].squeeze().to(device)
+
+            # Apply the projection if provided to convert from 271 -> 256 dimensions per token.
             if projection is not None:
                 inputs_embeds = projection(inputs_embeds.float())
-                print(f"inputs_embeds shape after projection: {inputs_embeds.shape}")
 
-            outputs = model(inputs_embeds=inputs_embeds.float())
-            print(f"outputs.logits shape: {outputs.logits.shape}")
-            
-            if outputs.logits.ndim == 3:
-                pred = outputs.logits[:, 0, :]
-            else:
-                pred = outputs.logits
-            
-            print(f"pred shape: {pred.shape}")
-            print(f"final labels shape: {labels.shape}")
-
-            loss = loss_fn(pred, labels.float())
+            outputs = model(inputs_embeds=inputs_embeds)
+            loss = loss_fn(outputs.logits, labels.float())
 
             loss.backward()
             optim.step()            
@@ -281,21 +261,15 @@ def run_velpred(
         losses_valid = 0
         with torch.no_grad():
             for i, batch in enumerate(loop_valid):
-                inputs_embeds = batch['inputs_embeds'].to(device)
-                labels = batch['labels'].to(device)
-                # Select the first position from labels (same as training)
-                labels = labels[:, 0, :]
-                
+                inputs_embeds = batch['inputs_embeds'].to(device)  # expected shape: [B, token_length, one_hot_dim]
+                labels = batch['labels'].squeeze().to(device)
+
+                # Apply the projection if provided.
                 if projection is not None:
                     inputs_embeds = projection(inputs_embeds.float())
-                
-                outputs = model(inputs_embeds=inputs_embeds.float())
-                if outputs.logits.ndim == 3:
-                    pred = outputs.logits[:, 0, :]
-                else:
-                    pred = outputs.logits
-                    
-                loss = loss_fn(pred, labels.float())
+
+                outputs = model(inputs_embeds=inputs_embeds)
+                loss = loss_fn(outputs.logits, labels.float())
                 losses_valid += loss.item()
 
                 loop_valid.set_description(f'Validation {epoch}')
@@ -310,7 +284,7 @@ def run_velpred(
         
         if plot:
             ax.cla()
-            ax.plot(np.arange(1, epoch+2), avg_train_loss, 'b', label='Training Loss')
+            ax.plot(np.arange(1, epoch+2), avg_train_loss,'b', label='Training Loss')
             ax.plot(np.arange(1, epoch+2), avg_valid_loss, 'orange', label='Validation Loss')
             ax.legend()
             ax.set_title("Loss Curve")
@@ -320,7 +294,6 @@ def run_velpred(
 
         if patience is not None:
             early_stopping(avg_valid_loss[-1], model)
-
             if early_stopping.early_stop:
                 print("Early stopping")
                 break
