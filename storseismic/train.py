@@ -240,15 +240,27 @@ def run_velpred(
         for i, batch in enumerate(loop_train):
             optim.zero_grad()
 
-            inputs_embeds = batch['inputs_embeds'].to(device)  # expected shape: [B, token_length, one_hot_dim]
-            labels = batch['labels'].squeeze().to(device)
+            # Expected input shape: [B, token_length, one_hot_dim] (e.g. [16, 20, 271])
+            inputs_embeds = batch['inputs_embeds'].to(device)
+            labels = batch['labels'].to(device)
+            # If labels contain a token dimension (e.g., [B, 20, vel_size]), select the first token.
+            if labels.dim() > 2:
+                labels = labels[:, 0, :]
 
-            # Apply the projection if provided to convert from 271 -> 256 dimensions per token.
+            # Apply the projection if provided to convert from one-hot (271) to embedding (256).
             if projection is not None:
                 inputs_embeds = projection(inputs_embeds.float())
 
+            # Forward pass.
             outputs = model(inputs_embeds=inputs_embeds)
-            loss = loss_fn(outputs.logits, labels.float())
+            # If the model returns a sequence output (shape: [B, token_length, vel_size]),
+            # select the first token's output as the prediction (commonly the [CLS] token).
+            if outputs.logits.dim() == 3:
+                pred = outputs.logits[:, 0, :]
+            else:
+                pred = outputs.logits
+
+            loss = loss_fn(pred, labels.float())
 
             loss.backward()
             optim.step()            
@@ -261,15 +273,21 @@ def run_velpred(
         losses_valid = 0
         with torch.no_grad():
             for i, batch in enumerate(loop_valid):
-                inputs_embeds = batch['inputs_embeds'].to(device)  # expected shape: [B, token_length, one_hot_dim]
-                labels = batch['labels'].squeeze().to(device)
+                inputs_embeds = batch['inputs_embeds'].to(device)
+                labels = batch['labels'].to(device)
+                if labels.dim() > 2:
+                    labels = labels[:, 0, :]
 
-                # Apply the projection if provided.
                 if projection is not None:
                     inputs_embeds = projection(inputs_embeds.float())
 
                 outputs = model(inputs_embeds=inputs_embeds)
-                loss = loss_fn(outputs.logits, labels.float())
+                if outputs.logits.dim() == 3:
+                    pred = outputs.logits[:, 0, :]
+                else:
+                    pred = outputs.logits
+
+                loss = loss_fn(pred, labels.float())
                 losses_valid += loss.item()
 
                 loop_valid.set_description(f'Validation {epoch}')
@@ -284,7 +302,7 @@ def run_velpred(
         
         if plot:
             ax.cla()
-            ax.plot(np.arange(1, epoch+2), avg_train_loss,'b', label='Training Loss')
+            ax.plot(np.arange(1, epoch+2), avg_train_loss, 'b', label='Training Loss')
             ax.plot(np.arange(1, epoch+2), avg_valid_loss, 'orange', label='Validation Loss')
             ax.legend()
             ax.set_title("Loss Curve")
