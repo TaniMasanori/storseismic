@@ -1,2 +1,8 @@
+# Large data files
+data/
 *.pt
-*.npy
+*.pth
+results/
+*_original_*.ipynb
+.ipynb_checkpoints/
+__pycache__/
