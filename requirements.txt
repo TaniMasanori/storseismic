@@ -5,6 +5,9 @@ numpy>=1.19.0
 pandas>=1.2.0
 matplotlib>=3.3.0
 
+# System monitoring
+psutil>=5.8.0  # For memory monitoring and system resource tracking
+
 # Data handling
 #snist @ git+https://github.com/LukasMosser/SNIST.git  # For SNIST dataset
 snist @ git+https://github.com/LukasMosser/SNIST.git
